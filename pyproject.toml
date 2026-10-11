@@ -1,0 +1,15 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11[global]>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "exact-dft"
+version = "0.1.0"
+description = "Component-level exact implementation of the OpenAI 'Explicit Power-Saving for the Exact Discrete Fourier Transform' paper"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[tool.scikit-build]
+cmake.args = ["-DEXACT_DFT_BUILD_PYTHON=ON"]
+sdist.exclude = ["tests"]
