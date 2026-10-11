@@ -51,9 +51,11 @@ pip install . --config-settings=cmake.define.EXACT_DFT_USE_GMP=ON  # needs libgm
 >>> y[0].as_complex()                        # Gaussian rationals only
 (10+0j)                                      # exact: sum of inputs
 >>> y[1].as_complex()
-(-2+2j)                                      # exact: -2 + 2i, not a float
->>> ed.exact_dft([1, 1, 1])[1].coeffs()      # general outputs live in Q(zeta_n)
-[(0, 1), (1, 1)]                             # = zeta_3, exactly
+(-2-2j)                                      # exact: -2 - 2i, not a float
+>>> ed.exact_dft([1, 0, 1])[1].coeffs()      # outputs live in the driver ring Q(zeta_D)
+[(1, 1), (0, 1), (-1, 1), (0, 1)]            # = 1 + zeta_3^2 = 1 - zeta_12^2, exactly
+>>> ed.exact_dft([1, 0, 1])[1].as_complex()  # Galois-tested: not in Q(i)
+ValueError: ... does NOT lie in Q(i)
 ```
 
 Complex inputs are converted **exactly**: every finite double is a dyadic
@@ -130,7 +132,7 @@ the paper's constructions — this is the tool.
 - `oracle_dft(n, x)` — naive exact reference (inputs in ring n)
 - `exact_convolve(a, b)` — exact linear convolution (Corollary 1.3)
 - `zeta(d)`, `gauss(d, re, im)`, `Cyclotomic` (with `+ − ×`, `pow`, `==`,
-  `coeffs()`, `as_complex()` for Gaussian rationals)
+  `coeffs()`, `as_complex()` — exact Galois-membership test for values in Q(i))
 - `working_length(n)`, `compile_report(n)` — structure / op-count
   introspection
 - `network_report(h)`, `network_exchange_demo(h)` — §2 budget and demo

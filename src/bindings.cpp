@@ -98,17 +98,50 @@ PYBIND11_MODULE(_core, m) {
              })
         .def("as_complex",
              [](const Cyclotomic& c) {
-                 if (c.d() != 1 && c.d() != 2 && c.d() != 4)
+                 const int d = c.d();
+                 // Exact Gaussian-rational extraction: the value lies in Q(i)
+                 // (4 | d) iff it is fixed by every Galois automorphism
+                 // sigma_k with gcd(k, d) = 1, k = 1 (mod 4) — those are
+                 // exactly the automorphisms fixing i = zeta_d^{d/4}. Then
+                 // a = (c + conj c)/2, b = (c - conj c)/(2i) are RATIONALS,
+                 // so their reduced coefficient vectors are [a, 0, ...].
+                 if (d == 1 || d == 2) {
+                     return std::complex<double>(c.coeffs()[0].to_double(), 0.0);
+                 }
+                 if (d % 4 != 0)
                      throw std::invalid_argument(
-                         "as_complex: only Gaussian rationals (d = 1, 2, 4) "
-                         "have complex values; general elements of "
-                         "Q(zeta_d) do not");
-                 // d = 4: coeffs [q0, q1] under Phi_4 = t^2 + 1 -> q0 + i q1.
-                 return std::complex<double>(c.coeffs()[0].to_double(),
-                                             c.coeffs().size() > 1
-                                                 ? c.coeffs()[1].to_double()
-                                                 : 0.0);
-             })
+                         "as_complex: value does not lie in Q(i) (ring Q(zeta_d) "
+                         "with 4 not dividing d)");
+                 const Cyclotomic z = Cyclotomic::zeta(d);
+                 auto gal = [&](int64_t k) {
+                     const Cyclotomic zk = z.pow(k);
+                     Cyclotomic acc(d);
+                     Cyclotomic wp = Cyclotomic::integer(d, 1);
+                     const auto& co = c.coeffs();
+                     for (size_t j = 0; j < co.size(); ++j) {
+                         if (!co[j].is_zero()) acc += Cyclotomic::rational(d, co[j]) * wp;
+                         if (j + 1 < co.size()) wp = wp * zk;
+                     }
+                     return acc;
+                 };
+                 for (int64_t k = 1; k < d; ++k) {
+                     if (k % 4 != 1 || std::gcd((int64_t)k, (int64_t)d) != 1) continue;
+                     if (!(gal(k) == c))
+                         throw std::invalid_argument(
+                             "as_complex: value is an exact element of Q(zeta_d) "
+                             "that does NOT lie in Q(i)");
+                 }
+                 const Cyclotomic conj = gal(d - 1);
+                 const Rational half(1, 2);
+                 const Cyclotomic re = (c + conj) * Cyclotomic::rational(d, half);
+                 const Cyclotomic im = (c - conj) *
+                     (Cyclotomic::rational(d, Rational(-1, 2)) * z.pow(d / 4));
+                 return std::complex<double>(re.coeffs()[0].to_double(),
+                                             im.coeffs()[0].to_double());
+             },
+             "exact float view: only when the VALUE lies in Q(i) (tested exactly "
+             "via Galois invariance); the returned pair is the exact Gaussian "
+             "rational (a, b) rendered as doubles")
         .def("__repr__", [](const Cyclotomic& c) {
             std::string s = "Cyclotomic(d=" + std::to_string(c.d()) + ", coeffs=[";
             for (size_t i = 0; i < c.coeffs().size(); ++i) {
