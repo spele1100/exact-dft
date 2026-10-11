@@ -6,3 +6,5 @@ __pycache__/
 .pytest_cache/
 .scikit-build/
 cmake-build-*/
+build/
+build-gmp/

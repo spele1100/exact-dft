@@ -267,13 +267,14 @@ static void test_shifted_arena() {
 
 // Coefficient growth + int64 frontier probe (informs GMP timing, spec risk).
 static void test_growth_frontier() {
-    std::printf("  growth frontier (prepared scalars + apply intermediates, int64):\n");
+    std::printf("  growth frontier (prepared scalars + apply intermediates; %s backend):\n",
+                ed::kGMPBackend ? "GMP" : "int64");
     int exact_up_to = 0, first_overflow = -1;
     for (int r : {8, 16, 24, 32, 48, 60, 64, 65, 72, 96, 128}) {
         try {
             auto rep = ed::compile_report(r);
-            std::printf("    r=%3d OK   max|num|=%lld  max den=%lld  (shears=%lld replays=%lld pairs=%lld)\n",
-                        r, (long long)rep.max_num, (long long)rep.max_den,
+            std::printf("    r=%3d OK   max|num| bits=%lld  max den bits=%lld  (shears=%lld replays=%lld pairs=%lld)\n",
+                        r, rep.max_num_bits, rep.max_den_bits,
                         rep.shears, rep.replays, rep.cross_pairs);
             exact_up_to = std::max(exact_up_to, r);
         } catch (const std::overflow_error&) {
@@ -281,8 +282,11 @@ static void test_growth_frontier() {
             if (first_overflow < 0) first_overflow = r;
         }
     }
-    CHECK(exact_up_to >= 64);  // int64 covers the spec's core exact range
-    CHECK(first_overflow == 65 || first_overflow == -1);  // known frontier
+    CHECK(exact_up_to >= 64);  // covers the spec's core exact range
+    if (!ed::kGMPBackend)
+        CHECK(first_overflow == 65 || first_overflow == -1);  // known int64 frontier
+    else
+        CHECK(first_overflow == -1);  // GMP: no overflow through r = 128
 }
 
 int main() {

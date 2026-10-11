@@ -112,13 +112,15 @@ struct NTReport {
     long long replays = 0;       // Lemma loc:replay invocations
     long long cross_pairs = 0;   // chunk pairs processed
     long long direct_blocks = 0; // direct-word fallbacks (paper's v-below-threshold case)
-    int64_t max_num = 0;         // growth of prepared scalars (|numerator| max)
-    int64_t max_den = 1;         // growth of prepared scalars (denominator max)
+    // Coefficient growth of prepared scalars, backend-independent bit sizes
+    // (int64 build: overflow surfaces as std::overflow_error instead).
+    long long max_num_bits = 0;
+    long long max_den_bits = 0;
 
     void note_scalar(const Cyclotomic& c) {
         for (const Rational& q : c.coeffs()) {
-            max_num = std::max(max_num, q.num < 0 ? -q.num : q.num);
-            max_den = std::max(max_den, q.den);
+            max_num_bits = std::max(max_num_bits, q.num_bits());
+            max_den_bits = std::max(max_den_bits, q.den_bits());
         }
     }
 };
@@ -485,7 +487,7 @@ class NewtonToeplitz {
             if (!(after_[off + ta + i] - before_[off + ta + i] == want)) {
                 std::fprintf(stderr, "CHUNK BUG r=%d ta=%d sb=%d a=%d e=%d i=%d\n", r_, ta, sb, a, e, i);
                 if (a == 1 && e == 1) {
-                    auto pr=[](const char*n, const Cyclotomic&c){ std::fprintf(stderr,"  %s:",n); for(auto&q:c.coeffs()) std::fprintf(stderr," %lld/%lld",(long long)q.num,(long long)q.den); std::fprintf(stderr,"\n"); };
+                    auto pr=[](const char*n, const Cyclotomic&c){ std::fprintf(stderr,"  %s:",n); for(auto&q:c.coeffs()) std::fprintf(stderr," %s",q.str().c_str()); std::fprintf(stderr,"\n"); };
                     Cyclotomic Eij(exec_d_);
                     for (int nu = sb; nu < p; ++nu) Eij += t_[(ta) - nu] * g_[nu - sb];
                     pr("M_direct", Eij);

@@ -230,7 +230,11 @@ class SectorPacker {
 // ---------------------------------------------------------------------------
 class TensorFourier {
   public:
-    explicit TensorFourier(std::vector<int> radices) : r_(std::move(radices)) {
+    // exec_ring: optional data ring D != L with L | D; per-axis words embed
+    // their scalars into Q(zeta_D) so the scheduled tensor can act on data
+    // living in a larger composite ring (M4 driver: D = lcm(2n, L)).
+    explicit TensorFourier(std::vector<int> radices, int exec_ring = 0)
+        : r_(std::move(radices)) {
         ell_ = (int)r_.size();
         if (ell_ == 0) throw std::invalid_argument("TensorFourier: no axes");
         R_ = 1; L_ = 1;
@@ -239,14 +243,16 @@ class TensorFourier {
             R_ *= r_[j];
             L_ = std::lcm(L_, r_[j]);
         }
+        data_d_ = exec_ring > 0 ? exec_ring : (int)L_;
         for (int j = 0; j < ell_; ++j)
-            words_.emplace_back(r_[j], r_[j] == 1 ? 0 : (int)L_);
+            words_.emplace_back(r_[j], r_[j] == 1 ? 0 : (exec_ring > 0 ? exec_ring : (int)L_));
         tau_.assign(ell_ + 1, 1);
         for (int j = ell_ - 1; j >= 0; --j) tau_[j] = tau_[j + 1] * r_[j];
     }
 
     long long R() const { return R_; }
     int ring() const { return (int)L_; }
+    int data_ring() const { return data_d_; }
     int ell() const { return ell_; }
     const std::vector<NTReport>& axis_reports() const { return axis_rep_; }
 
@@ -259,7 +265,7 @@ class TensorFourier {
         if ((long long)x.size() != R_)
             throw std::invalid_argument("TensorFourier::apply: length != prod radices");
         for (const Cyclotomic& c : x)
-            if (c.d() != L_)
+            if (c.d() != data_d_)
                 throw std::invalid_argument("TensorFourier::apply: ring mismatch");
         std::vector<int> order;
         if (axis_order) {
@@ -323,6 +329,7 @@ class TensorFourier {
     std::vector<int> r_;
     int ell_ = 0;
     long long R_ = 1, L_ = 1, groups_ = 0, prefix_extensions_ = 0;
+    int data_d_ = 1;
     std::vector<long long> tau_;
     std::vector<NewtonToeplitz> words_;
     std::vector<NTReport> axis_rep_;

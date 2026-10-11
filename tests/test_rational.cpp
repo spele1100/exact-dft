@@ -1,6 +1,7 @@
 // exact-dft — M1 tests: L0 rational arithmetic (plain assert-based, per spec).
 #include "exact/rational.hpp"
 
+
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -68,6 +69,7 @@ static void test_axiom_fuzz() {
 }
 
 static void test_overflow_detection() {
+    if (ed::kGMPBackend) return;  // overflow detection is an int64-backend property
     bool threw = false;
     try {
         Rational big = Rational(INT64_MAX, 1);
