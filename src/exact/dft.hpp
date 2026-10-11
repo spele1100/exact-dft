@@ -212,10 +212,16 @@ struct DriverReport {
 
 class ExactDFT {
   public:
-    explicit ExactDFT(int n) : n_(n), wl_(working_length(n)) {
+    // ring_multiple: further factor folded into the transform ring D (must
+    // be a positive integer). The Python surface uses this to host i (ring
+    // factor 4) for rational-complex inputs at odd working lengths.
+    explicit ExactDFT(int n, int ring_multiple = 1) : n_(n), wl_(working_length(n)) {
         if (n_ < 1) throw std::invalid_argument("ExactDFT: n >= 1");
+        if (ring_multiple < 1)
+            throw std::invalid_argument("ExactDFT: ring_multiple >= 1");
         L_ = wl_.L;
-        const long long D = std::lcm(2LL * n_, (long long)L_);
+        long long D = std::lcm(2LL * n_, (long long)L_) * 1LL;
+        D = std::lcm(D, (long long)ring_multiple);
         if (D > kMaxCyclotomicOrder)
             throw std::invalid_argument("ExactDFT: ring order exceeds Phi cap");
         D_ = (int)D;

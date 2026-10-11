@@ -5,11 +5,26 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "exact-dft"
 version = "0.1.0"
-description = "Component-level exact implementation of the OpenAI 'Explicit Power-Saving for the Exact Discrete Fourier Transform' paper"
+description = "Component-level exact implementation of OpenAI's 'Explicit Power-Saving for the Exact Discrete Fourier Transform' paper"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+authors = [{ name = "spele1100" }]
+keywords = ["dft", "fourier", "exact", "cyclotomic", "symbolic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Paper = "https://github.com/openai/math"
 
 [tool.scikit-build]
 cmake.args = ["-DEXACT_DFT_BUILD_PYTHON=ON"]
-sdist.exclude = ["tests"]
+cmake.version = ">=3.21"
+sdist.exclude = ["tests", "build", "build-gmp", "build-py", "docs"]
+wheel.exclude = ["tests"]
