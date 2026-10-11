@@ -31,7 +31,7 @@ endif()
 
 if(EXACT_DFT_BUILD_TESTS)
     enable_testing()
-    foreach(t test_rational test_cyclotomic test_oracle)
+    foreach(t test_rational test_cyclotomic test_oracle test_newton_toeplitz)
         add_executable(${t} tests/${t}.cpp)
         target_link_libraries(${t} PRIVATE exact_dft)
         add_test(NAME ${t} COMMAND ${t})

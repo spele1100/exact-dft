@@ -175,6 +175,7 @@ class Cyclotomic {
         return Cyclotomic(d_, reduce(std::move(prod)));
     }
     Cyclotomic& operator+=(const Cyclotomic& o) { return *this = *this + o; }
+    Cyclotomic& operator-=(const Cyclotomic& o) { return *this = *this - o; }
     Cyclotomic& operator*=(const Cyclotomic& o) { return *this = *this * o; }
 
     bool operator==(const Cyclotomic& o) const { return d_ == o.d_ && c_ == o.c_; }
