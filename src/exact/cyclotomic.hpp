@@ -225,14 +225,37 @@ class Cyclotomic {
                                         std::to_string(kMaxCyclotomicOrder) + "]");
     }
     void require_same_ring(const Cyclotomic& o) const {
-        if (d_ != o.d_)
+        if (d_ != o.d_) {
             throw std::invalid_argument("Cyclotomic: mixing elements of Q(zeta_" +
                                         std::to_string(d_) + ") and Q(zeta_" +
                                         std::to_string(o.d_) + ")");
+        }
     }
 
     int d_;
     std::vector<Rational> c_;
 };
+
+// Embed a cyclotomic element of Q(zeta_d) into Q(zeta_D) (requires d | D)
+// by the standard compatibility zeta_d = zeta_D^{D/d}. Spec L3/L5: per-axis
+// scalars compiled in Q(zeta_r) must act on data living in the composite
+// ring Q(zeta_lcm of the axes). Coefficient vectors change shape (phi(d) ->
+// phi(D)); values are preserved under the embedding map.
+inline Cyclotomic embed(const Cyclotomic& c, int D) {
+    const int d = c.d();
+    if (D == d) return c;
+    if (D < 1 || D > kMaxCyclotomicOrder || D % d != 0)
+        throw std::invalid_argument("embed: target order D must be a multiple of d");
+    if (c.is_zero()) return Cyclotomic(D);
+    const Cyclotomic w = Cyclotomic::zeta(D).pow(D / d);  // order exactly d
+    Cyclotomic acc(D);
+    Cyclotomic wp = Cyclotomic::integer(D, 1);
+    const auto& co = c.coeffs();
+    for (size_t i = 0; i < co.size(); ++i) {
+        if (!co[i].is_zero()) acc += Cyclotomic::rational(D, co[i]) * wp;
+        if (i + 1 < co.size()) wp = wp * w;
+    }
+    return acc;
+}
 
 }  // namespace ed

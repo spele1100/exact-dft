@@ -199,9 +199,15 @@ struct ReplayDAG {
 // ---------------------------------------------------------------------------
 // NewtonToeplitz: compiled F_r(zeta_r) on exactly r coordinates.
 // ---------------------------------------------------------------------------
+// exec_ring: optional target execution ring D != r with r | D (spec L3).
+// The compiled word is identical; the prepared scalars are embedded into
+// Q(zeta_D) via ed::embed (zeta_r = zeta_D^{D/r}) so the word can act on
+// composite-ring data during tensor synchronization. Ring-r tables remain
+// available through the accessors; the report always reflects compilation.
 class NewtonToeplitz {
   public:
-    explicit NewtonToeplitz(int r) : r_(r) {
+    explicit NewtonToeplitz(int r, int exec_ring = 0)
+        : r_(r), exec_d_(exec_ring > 0 ? exec_ring : r) {
         if (r < 1 || r > kMaxCyclotomicOrder)
             throw std::invalid_argument("NewtonToeplitz: r out of range");
         rep_.r = r;
@@ -251,17 +257,19 @@ class NewtonToeplitz {
         }
         for (const auto& v : {&H_, &t_, &g_, &D1_, &D2_, &DNinv_})
             for (const Cyclotomic& c : *v) rep_.note_scalar(c);
+        embed_scalars_if_needed();
     }
 
     int r() const { return r_; }
     const NTReport& report() const { return rep_; }
 
     // Apply F_r(zeta_r) * x exactly, in place, on exactly the r coordinates
-    // of x. All entries of x must live in ring Q(zeta_r).
+    // of x. All entries of x must live in ring Q(zeta_r) when compiled with
+    // the default exec ring, or in Q(zeta_D) when exec_ring = D was given.
     void apply(std::vector<Cyclotomic>& x) const {
         if ((int)x.size() != r_) throw std::invalid_argument("apply: length != r");
         for (const Cyclotomic& c : x)
-            if (c.d() != r_) throw std::invalid_argument("apply: ring mismatch");
+            if (c.d() != exec_d_) throw std::invalid_argument("apply: ring mismatch");
         if (r_ == 1) return;
         // N^T x = D2 (T^T (D1 x)); T^T = J T J (J = exchange matrix).
         for (int i = 0; i < r_; ++i) x[i] = D1_[i] * x[i];
@@ -284,12 +292,28 @@ class NewtonToeplitz {
 
     // --- exposed prepared scalars (tests, compile_report) ---
     const std::vector<Cyclotomic>& H() const { return H_; }
-    const std::vector<Cyclotomic>& t() const { return t_; }
-    const std::vector<Cyclotomic>& g() const { return g_; }
-    const std::vector<Cyclotomic>& D2() const { return D2_; }
-    const std::vector<Cyclotomic>& DNinv() const { return DNinv_; }
+    const std::vector<Cyclotomic>& t() const { return exec_d_ == r_ ? t_ : t0_; }
+    const std::vector<Cyclotomic>& g() const { return exec_d_ == r_ ? g_ : g0_; }
+    const std::vector<Cyclotomic>& D2() const { return exec_d_ == r_ ? D2_ : D20_; }
+    const std::vector<Cyclotomic>& DNinv() const {
+        return exec_d_ == r_ ? DNinv_ : DNinv0_;
+    }
+    int exec_ring() const { return exec_d_; }
 
   private:
+    void embed_scalars_if_needed() {
+        if (exec_d_ == r_) return;
+        if (exec_d_ % r_ != 0)
+            throw std::invalid_argument(
+                "NewtonToeplitz: exec ring order must be a multiple of r");
+        t0_ = t_; g0_ = g_; D20_ = D2_; DNinv0_ = DNinv_;  // ring-r copies
+        for (auto& c : t_) c = embed(c, exec_d_);
+        for (auto& c : g_) c = embed(c, exec_d_);
+        for (auto& c : D1_) c = embed(c, exec_d_);
+        for (auto& c : D2_) c = embed(c, exec_d_);
+        for (auto& c : DNinv_) c = embed(c, exec_d_);
+    }
+
     // Direct word fallback (paper: rows in decreasing order; lower
     // coordinates still hold original values).
     void direct_(std::vector<Cyclotomic>& X, int off, int v) const {
@@ -331,10 +355,10 @@ class NewtonToeplitz {
         // entries at source-chunk starts (first local column of each M).
         std::vector<std::vector<Cyclotomic>> rowE(ntgt);      // rowE[tau][j], j < p
         std::vector<std::vector<Cyclotomic>> colE(nsrc);      // colE[sigma][i-p], i < v
-        std::vector<Cyclotomic> row(p, Cyclotomic(r_));
+        std::vector<Cyclotomic> row(p, Cyclotomic(exec_d_));
         // Base row i = p: E_p,j = sum_{nu=j}^{p-1} t_{p-nu} g_{nu-j}.
         for (int j = 0; j < p; ++j) {
-            Cyclotomic acc(r_);
+            Cyclotomic acc(exec_d_);
             for (int nu = j; nu < p; ++nu) acc += t_[p - nu] * g_[nu - j];
             row[j] = std::move(acc);
         }
@@ -344,9 +368,9 @@ class NewtonToeplitz {
                 // First column (j = 0) is NOT covered by the displacement
                 // identity; computed directly: E_i0 = sum_{nu<p} t_{i-nu} g_nu.
                 const Cyclotomic tv = t_[i - p];
-                std::vector<Cyclotomic> next(p, Cyclotomic(r_));
+                std::vector<Cyclotomic> next(p, Cyclotomic(exec_d_));
                 for (int j = 1; j < p; ++j) next[j] = row[j - 1] - tv * g_[p - j];
-                Cyclotomic e0(r_);
+                Cyclotomic e0(exec_d_);
                 for (int nu = 0; nu < p; ++nu) e0 += t_[i - nu] * g_[nu];
                 next[0] = std::move(e0);
                 row = std::move(next);
@@ -379,12 +403,12 @@ class NewtonToeplitz {
                       const std::vector<Cyclotomic>& colStart) const {
         // Branch vectors of the displacement decomposition.
         // M_ij = E_{ta+i, sb+j}; rowStart[j] = E_{ta, j}; colStart[i] = E_{p+i, sb}.
-        std::vector<Cyclotomic> v1(a, Cyclotomic(r_)), w1(e, Cyclotomic(r_));
+        std::vector<Cyclotomic> v1(a, Cyclotomic(exec_d_)), w1(e, Cyclotomic(exec_d_));
         for (int i = 0; i < a; ++i) v1[i] = -t_[(ta + i) - p];
         for (int j = 0; j < e; ++j) w1[j] = g_[p - (sb + j)];
         // R = (M - J_a M J_e^T) - v1 w1^T: zero in the interior; only first
         // row/column survive.
-        std::vector<Cyclotomic> R0(e, Cyclotomic(r_)), Rc(a, Cyclotomic(r_));
+        std::vector<Cyclotomic> R0(e, Cyclotomic(exec_d_)), Rc(a, Cyclotomic(exec_d_));
         for (int j = 0; j < e; ++j) R0[j] = rowStart[sb + j] - v1[0] * w1[j];
         for (int i = 0; i < a; ++i) Rc[i] = colStart[ta + i - p] - v1[i] * w1[0];
         // branch 2: e_0 R_{0,*};  branch 3: (R_{*,0} - R_00 e_0) e_0^T.
@@ -429,19 +453,19 @@ class NewtonToeplitz {
             // Outputs: y_i += c_i (gate reads; no direct-source outputs => D=0).
             for (int i = 0; i < a; ++i)
                 dag.outs.push_back({off + ta + i, off + gates[base + e + i],
-                                    false, Cyclotomic::integer(r_, 1)});
+                                    false, Cyclotomic::integer(exec_d_, 1)});
         };
         branch(v1, w1);
         {   // branch 2: v2 = e_0, w2 = R0
-            std::vector<Cyclotomic> v2(a, Cyclotomic(r_));
-            v2[0] = Cyclotomic::integer(r_, 1);
+            std::vector<Cyclotomic> v2(a, Cyclotomic(exec_d_));
+            v2[0] = Cyclotomic::integer(exec_d_, 1);
             branch(v2, R0);
         }
         {   // branch 3: v3 = (0, Rc[1], ...), w3 = e_0
-            std::vector<Cyclotomic> v3(a, Cyclotomic(r_));
+            std::vector<Cyclotomic> v3(a, Cyclotomic(exec_d_));
             for (int i = 1; i < a; ++i) v3[i] = Rc[i];
-            std::vector<Cyclotomic> w3(e, Cyclotomic(r_));
-            w3[0] = Cyclotomic::integer(r_, 1);
+            std::vector<Cyclotomic> w3(e, Cyclotomic(exec_d_));
+            w3[0] = Cyclotomic::integer(exec_d_, 1);
             branch(v3, w3);
         }
 #ifdef ED_CHUNK_DEBUG
@@ -452,9 +476,9 @@ class NewtonToeplitz {
         auto after_ = X;
         // verify: delta on targets == M * sources, M from direct cross formula
         for (int i = 0; i < a; ++i) {
-            Cyclotomic want(r_);
+            Cyclotomic want(exec_d_);
             for (int j = 0; j < e; ++j) {
-                Cyclotomic Eij(r_);
+                Cyclotomic Eij(exec_d_);
                 for (int nu = sb + j; nu < p; ++nu) Eij += t_[(ta + i) - nu] * g_[nu - (sb + j)];
                 want += Eij * X[off + sb + j];
             }
@@ -462,7 +486,7 @@ class NewtonToeplitz {
                 std::fprintf(stderr, "CHUNK BUG r=%d ta=%d sb=%d a=%d e=%d i=%d\n", r_, ta, sb, a, e, i);
                 if (a == 1 && e == 1) {
                     auto pr=[](const char*n, const Cyclotomic&c){ std::fprintf(stderr,"  %s:",n); for(auto&q:c.coeffs()) std::fprintf(stderr," %lld/%lld",(long long)q.num,(long long)q.den); std::fprintf(stderr,"\n"); };
-                    Cyclotomic Eij(r_);
+                    Cyclotomic Eij(exec_d_);
                     for (int nu = sb; nu < p; ++nu) Eij += t_[(ta) - nu] * g_[nu - sb];
                     pr("M_direct", Eij);
                     pr("rowStart[sb]", rowStart[sb]);
@@ -477,7 +501,9 @@ class NewtonToeplitz {
     }
 
     int r_;
+    int exec_d_;
     std::vector<Cyclotomic> H_, t_, g_, D1_, D2_, DNinv_;
+    std::vector<Cyclotomic> t0_, g0_, D20_, DNinv0_;  // ring-r copies if embedded
     mutable NTReport rep_;
 };
 

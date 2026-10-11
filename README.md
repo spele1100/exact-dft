@@ -19,8 +19,13 @@ exactness, structural fidelity, and pedagogy.
   recursive division, differentially tested against an independent
   Mobius-formula table), L1 naive exact O(n^2) DFT oracle + linear
   convolution oracle. All tests green.
-- M2: Newton–Toeplitz exact-width compiler with borrowed-coordinate replay.
-- M3: mixed-radix sector-packing traversal.
+- **M2 (done):** Newton–Toeplitz exact-width compiler with borrowed-coordinate
+  replay; differential vs oracle bit-exact for all compiled widths tested.
+- **M3 (done):** L3 synchronization layer — mixed-radix digit DFS + sector
+  packing (four-state update S/Q/o/I, eq:sector-start/-updates) in O(R), and
+  the scheduled tensor transform (tensor_j F_{r_j}) over the composite ring
+  Q(zeta_lcm) via embedded per-axis compiled words; traversal-order
+  independent, bit-exact vs a naive per-axis oracle.
 - M4: all-lengths driver (prime products + Bluestein chirp).
 - M5: scaled tensor network demo.
 - M6: full pybind11 surface + packaging.
